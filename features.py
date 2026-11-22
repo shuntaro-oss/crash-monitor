@@ -55,6 +55,9 @@ def build_features(px: pd.Series, fred: dict) -> pd.DataFrame:
     if cm is not None and bc is not None and gdp is not None:
         priv = (cm + bc) / 1000 / gdp * 100       # 民間債務/GDP(%)。債務は百万ドル、GDPは十億ドル
         f["priv_debt_chg5"] = priv - priv.shift(60)
+    eq = qtr("NCBEILQ027S")
+    if eq is not None and gdp is not None:
+        f["equity_gdp"] = eq / 1000 / gdp * 100   # 株式時価総額/GDP(%)
     if ff is not None and "cpi_yoy" in f:
         f["real_ff"] = ff - f["cpi_yoy"]
     return f

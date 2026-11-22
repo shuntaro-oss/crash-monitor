@@ -49,9 +49,25 @@ def _svg_line(s: pd.Series, events: pd.DataFrame, w=900, h=180) -> str:
             f'stroke="#26a" stroke-width="1.5"/>{ticks}</svg>')
 
 
+def _bubble_section(b: dict) -> str:
+    rows = "".join(f"<tr><td>{html.escape(x['name'])}</td><td>{x['value']:.3f}</td><td>{x['pct']:.0f}</td></tr>" for x in b["rows"])
+    peaks = "".join(f"<tr><td>{html.escape(p['name'])}</td><td>{p['date']:%Y-%m}</td><td>{p['score']:.0f}</td></tr>" for p in b["peaks"])
+    ev = pd.DataFrame({"trigger_date": pd.to_datetime([p["date"] for p in b["peaks"]])})
+    return (f'<div class="card"><b>バブル度</b>　<span class="p {b["cls"]}">{b["score"]:.0f}</span> / 100　'
+            f'<b class="{b["cls"]}">{b["level"]}</b><br><span class="note">過去の履歴の中での位置（上位何%か）の平均。'
+            f'50未満=平常 / 50〜70=やや割高 / 70〜85=割高 / 85以上=バブル警戒。基準月 {b["asof"]:%Y-%m}。'
+            f'履歴の最高は {b["max_date"]:%Y-%m} の {b["max_score"]:.0f}。</span></div>'
+            f"<h3>バブル度の内訳</h3><table><tr><th>指標</th><th>現在値</th><th>履歴内の位置(0-100)</th></tr>{rows}</table>"
+            f"<h3>過去の頂点との比較</h3><table><tr><th>局面</th><th>時期</th><th>バブル度</th></tr>{peaks}</table>"
+            f"<h3>バブル度の推移（赤線は上の頂点）</h3>" + _svg_line(b["history"] / 100, ev) +
+            '<p class="note">バブルかどうかは崩壊後にしか確定しません。これは予言ではなく、過去の頂点と比べた現在の位置です。</p>')
+
+
 def _market_section(key: str, r: dict) -> str:
     name = config.MARKETS[key]["name"]
     parts = [f"<h2>{html.escape(name)}</h2>"]
+    if "bubble" in r:
+        parts.append(_bubble_section(r["bubble"]))
     news = r.get("news_score")
     for kind, label in (("shock", "急落型（21営業日で-10%以上）"), ("bear", "長期下落型（高値から-20%以上）")):
         a = r["models"].get(kind)

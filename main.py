@@ -19,6 +19,7 @@ import events as ev
 import features
 import model
 import news as newsmod
+import bubble
 import report
 
 
@@ -69,6 +70,10 @@ def main() -> int:
             except Exception as e:  # noqa: BLE001
                 res["errors"][kind] = str(e)
                 print(f"  [警告] {key}/{kind}: {e}")
+        try:
+            res["bubble"] = bubble.compute(feat, key)
+        except Exception as e:  # noqa: BLE001
+            print(f"  [警告] バブル度 {key}: {e}")
         results[key] = res
 
     config.OUT_DIR.mkdir(exist_ok=True)
@@ -79,6 +84,9 @@ def main() -> int:
     summary = {k: {kind: {"p": m["p_now"], "lo": m["p_lo"], "hi": m["p_hi"], "base": m["base_rate"],
                           "asof": str(m["asof"].date())} for kind, m in r["models"].items()}
                for k, r in results.items()}
+    for k, r in results.items():
+        if "bubble" in r:
+            summary[k]["bubble"] = {"score": r["bubble"]["score"], "level": r["bubble"]["level"]}
     summary["news_score"] = news["score"]
     (config.OUT_DIR / f"summary{suffix}.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -89,6 +97,9 @@ def main() -> int:
             continue
         md.append(f"## {config.MARKETS[k]['name']}")
         for kind, m in r.items():
+            if kind == "bubble":
+                md.append(f"- バブル度: **{m['score']:.0f}/100（{m['level']}）**")
+                continue
             md.append(f"- {names[kind]}: **{m['p']*100:.1f}%**（幅 {m['lo']*100:.1f}〜{m['hi']*100:.1f}%、過去平均 {m['base']*100:.1f}%、基準日 {m['asof']}）")
         md.append("")
     md.append(f"ニュース不安度: {summary['news_score'] if summary['news_score'] is None else round(summary['news_score'])} / 100")

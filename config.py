@@ -1,0 +1,65 @@
+"""設定。しきい値や対象市場はここだけ変えれば全体に反映される。"""
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+DATA_DIR = ROOT / "data"
+CACHE_DIR = DATA_DIR / "cache"      # 取得データのキャッシュ（1日で更新）
+MANUAL_DIR = DATA_DIR / "manual"    # 手動CSV・ウォッチリスト置き場
+OUT_DIR = ROOT / "output"
+
+# ---- 対象市場 ----
+MARKETS = {
+    "US": {"name": "S&P500（米国）", "yahoo": "^GSPC", "stooq": "^spx"},
+    "JP": {"name": "日経平均（日本）", "yahoo": "^N225", "stooq": "^nkx"},
+}
+
+# ---- FRED（無料・APIキー不要のCSV） ----
+FRED_SERIES = {
+    "GS10": "米10年国債利回り",
+    "TB3MS": "米3か月国債利回り",
+    "BAA": "米Baa社債利回り",
+    "FEDFUNDS": "FF金利",
+    "CPIAUCSL": "米消費者物価",
+    "UNRATE": "米失業率",
+    "DEXJPUS": "ドル円",
+    "VIXCLS": "VIX（表示用。1990年以降）",
+}
+
+# ---- 暴落の定義 ----
+BEAR_THRESHOLD = -0.20    # 高値から-20%（長期下落型）
+SHOCK_THRESHOLD = -0.10   # 21営業日で-10%（急落型）
+SHOCK_WINDOW = 21
+SHOCK_MERGE_DAYS = 63     # この日数以内の急落は同じ事象とみなす
+
+# ---- モデル ----
+HORIZON_MONTHS = 12       # 「今後12か月以内に発生する確率」を推定
+LOGIT_C = 0.3             # 正則化（小さいほど強い）。事例が少ないため強めに設定
+MIN_TRAIN_YEARS = 15
+TEST_BLOCK_YEARS = 3
+BOOTSTRAP_N = 200
+
+# 市場ごとの特徴量（features.py の列名）
+FEATURES = {
+    "US": ["dd", "ret12", "vol3", "val", "curve", "credit", "ff_chg12", "cpi_yoy", "unrate_chg12"],
+    "JP": ["dd", "ret12", "vol3", "val", "usdjpy_chg12", "curve", "credit", "ff_chg12"],
+}
+FEATURE_LABELS = {
+    "dd": "高値からの下落率",
+    "ret12": "直近12か月の騰落率",
+    "vol3": "直近3か月の変動率",
+    "val": "割高度（10年平均比）",
+    "curve": "米イールドカーブ（10年−3か月）",
+    "credit": "米信用スプレッド（Baa−10年）",
+    "ff_chg12": "FF金利の12か月変化",
+    "cpi_yoy": "米インフレ率（前年比）",
+    "unrate_chg12": "米失業率の12か月変化",
+    "usdjpy_chg12": "ドル円の12か月変化",
+}
+
+# ---- ニュース（GDELT） ----
+NEWS_QUERIES = {
+    "市場不安": '("stock market crash" OR recession OR "financial crisis")',
+    "通商・関税": '(tariff OR "trade war" OR sanctions)',
+    "戦争・紛争": '(war OR "military conflict" OR missile attack)',
+    "金融政策": '("rate hike" OR "central bank" OR inflation)',
+}

@@ -19,6 +19,8 @@ jobs:
           python-version: "3.12"
       - run: pip install pandas numpy scikit-learn
       - run: python -u main.py
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
       - name: 公開用に配置して保存
         run: |
           mkdir -p docs

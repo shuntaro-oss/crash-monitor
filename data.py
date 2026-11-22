@@ -76,9 +76,13 @@ def fetch_fred(series_id: str) -> pd.Series:
     def load():
         errors = []
         steps = []
+        import os
+        if os.environ.get("FRED_API_KEY"):
+            steps.append(("fredapi", _fred_api))      # キーがあれば最優先（安定）
         if _FRED_DOWN["n"] < 2:
             steps.append(("fredgraph", _fred_csv))
-        steps.append(("fredapi", _fred_api))
+        if not os.environ.get("FRED_API_KEY"):
+            steps.append(("fredapi", _fred_api))
         if series_id in config.YAHOO_FALLBACK:
             steps.append(("yahoo代替", _yahoo_macro))
         for name, fn in steps:

@@ -35,4 +35,10 @@ def make_demo(seed: int = 1) -> dict:
         "UNRATE": pd.Series(5 + np.cumsum(rng.normal(0, 0.1, n)) * 0.2, index=months).clip(2, 12),
         "DEXJPUS": pd.Series(150 * np.exp(np.cumsum(rng.normal(0, 0.01, n))) * 0.5, index=months),
     }
+    qs = pd.date_range("1947-01-01", "2026-07-01", freq="QS")
+    g = pd.Series(30 + np.cumsum(rng.normal(0.3, 1.0, len(qs))), index=qs).clip(20, 130)
+    fred["GFDEGDQ188S"] = g
+    fred["GDP"] = pd.Series(500 * np.exp(np.cumsum(rng.normal(0.015, 0.005, len(qs)))), index=qs)
+    fred["CMDEBT"] = fred["GDP"] * 1000 * 0.4 * (1 + 0.1 * np.sin(np.arange(len(qs)) / 12))
+    fred["BCNSDODNS"] = fred["GDP"] * 1000 * 0.3 * (1 + 0.1 * np.cos(np.arange(len(qs)) / 15))
     return {"px": {"US": px, "JP": px_jp}, "fred": fred}

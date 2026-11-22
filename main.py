@@ -51,7 +51,21 @@ def main() -> int:
         for kind in ("shock", "bear"):
             sub = events[events["kind"] == kind]
             try:
-                res["models"][kind] = model.analyze(feat, sub, config.FEATURES[key], kind)
+                base = model.analyze(feat, sub, config.FEATURES[key], kind)
+                res["models"][kind] = base
+                extra = [c for c in config.DALIO_EXTRA.get(key, []) if c in feat.columns and feat[c].notna().sum() > 240]
+                if extra:
+                    try:
+                        ext = model.analyze(feat, sub, config.FEATURES[key] + extra, kind)
+                        b, e = base["cv"], ext["cv"]
+                        adopt = (None not in (b["auc"], e["auc"]) and e["brier"] < b["brier"] and e["auc"] >= b["auc"])
+                        res.setdefault("compare", {})[kind] = {"base": b, "ext": e, "extra": extra, "adopt": adopt,
+                                                              "p_base": base["p_now"], "p_ext": ext["p_now"]}
+                        if adopt:
+                            res["models"][kind] = ext
+                        print(f"  {key}/{kind}: ダリオ版 AUC {e['auc']} Brier {e['brier']} / 通常版 AUC {b['auc']} Brier {b['brier']} -> {'採用' if adopt else '不採用'}")
+                    except Exception as ex:  # noqa: BLE001
+                        print(f"  [ダリオ版スキップ] {key}/{kind}: {ex}")
             except Exception as e:  # noqa: BLE001
                 res["errors"][kind] = str(e)
                 print(f"  [警告] {key}/{kind}: {e}")

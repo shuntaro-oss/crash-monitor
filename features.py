@@ -43,4 +43,18 @@ def build_features(px: pd.Series, fred: dict) -> pd.DataFrame:
     fx = mon("DEXJPUS")
     if fx is not None:
         f["usdjpy_chg12"] = fx.pct_change(12)
+    # ---- ダリオ型（債務サイクル）。四半期データは公表遅れを見て6か月ずらす ----
+    def qtr(sid):
+        return _monthly(fred[sid]).reindex(f.index).ffill().shift(6) if sid in fred else None
+
+    gov = qtr("GFDEGDQ188S")
+    if gov is not None:
+        f["gov_debt"] = gov
+        f["gov_debt_chg5"] = gov - gov.shift(60)
+    cm, bc, gdp = qtr("CMDEBT"), qtr("BCNSDODNS"), qtr("GDP")
+    if cm is not None and bc is not None and gdp is not None:
+        priv = (cm + bc) / 1000 / gdp * 100       # 民間債務/GDP(%)。債務は百万ドル、GDPは十億ドル
+        f["priv_debt_chg5"] = priv - priv.shift(60)
+    if ff is not None and "cpi_yoy" in f:
+        f["real_ff"] = ff - f["cpi_yoy"]
     return f

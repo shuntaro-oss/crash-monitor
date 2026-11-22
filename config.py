@@ -23,6 +23,11 @@ FRED_SERIES = {
     "UNRATE": "米失業率",
     "DEXJPUS": "ドル円",
     "VIXCLS": "VIX（表示用。1990年以降）",
+    # ダリオ型（債務サイクル）指標。FRED APIキーがあるときだけ取得される
+    "GFDEGDQ188S": "米連邦政府債務/GDP",
+    "CMDEBT": "米家計債務",
+    "BCNSDODNS": "米非金融企業債務",
+    "GDP": "米名目GDP",
 }
 
 # FREDに繋がらないときのYahoo代替（利回り・ドル円・VIXのみ。社債利回り等は代替なし→その特徴量は自動的に外れる）
@@ -46,7 +51,14 @@ FEATURES = {
     "US": ["dd", "ret12", "vol3", "val", "curve", "credit", "ff_chg12", "cpi_yoy", "unrate_chg12"],
     "JP": ["dd", "ret12", "vol3", "val", "usdjpy_chg12", "curve", "credit", "ff_chg12"],
 }
+# ダリオ型の追加特徴量。通常版と検証成績を比べ、改善したときだけ採用する（米国のみ）
+DALIO_EXTRA = {"US": ["gov_debt", "gov_debt_chg5", "priv_debt_chg5", "real_ff"]}
+
 FEATURE_LABELS = {
+    "gov_debt": "政府債務/GDP",
+    "gov_debt_chg5": "政府債務/GDPの5年変化",
+    "priv_debt_chg5": "民間債務/GDPの5年変化（信用の膨張）",
+    "real_ff": "実質政策金利（FF金利−インフレ率）",
     "dd": "高値からの下落率",
     "ret12": "直近12か月の騰落率",
     "vol3": "直近3か月の変動率",

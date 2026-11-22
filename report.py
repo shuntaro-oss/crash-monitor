@@ -69,6 +69,14 @@ def _market_section(key: str, r: dict) -> str:
             f'<span class="note">推定幅(10〜90%) {_pct(a["p_lo"])}〜{_pct(a["p_hi"])} ／ '
             f'過去の平均 {_pct(a["base_rate"])} の {ratio:.1f}倍 ／ 警戒レベル <b class="{cls}">{lv}</b></span><br>'
             f'<span class="note">基準月: {a["asof"]:%Y-%m} ／ 学習 {a["n_rows"]}か月・発生前月 {a["n_pos"]}か月 ／ {cv_txt}</span></div>')
+        cp = r.get("compare", {}).get(kind)
+        if cp:
+            f = lambda v: "-" if v is None else f"{v:.3f}"
+            parts.append(
+                "<h3>ダリオ型（債務サイクル）指標の検証</h3><table><tr><th></th><th>AUC</th><th>Brier（小さいほど良い）</th><th>現在の確率</th></tr>"
+                f"<tr><td>通常版</td><td>{f(cp['base']['auc'])}</td><td>{f(cp['base']['brier'])}</td><td>{_pct(cp['p_base'])}</td></tr>"
+                f"<tr><td>ダリオ指標を追加</td><td>{f(cp['ext']['auc'])}</td><td>{f(cp['ext']['brier'])}</td><td>{_pct(cp['p_ext'])}</td></tr></table>"
+                f"<p class='note'>判定: <b>{'改善したため採用' if cp['adopt'] else '改善が確認できないため不採用（表示中の確率は通常版）'}</b></p>")
         c = a["contrib"]
         rows = "".join(
             f"<tr><td>{config.FEATURE_LABELS.get(k, k)}</td><td>{a['now_values'][k]:.3f}</td>"

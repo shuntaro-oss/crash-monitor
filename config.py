@@ -25,6 +25,9 @@ FRED_SERIES = {
     "VIXCLS": "VIX（表示用。1990年以降）",
 }
 
+# FREDに繋がらないときのYahoo代替（利回り・ドル円・VIXのみ。社債利回り等は代替なし→その特徴量は自動的に外れる）
+YAHOO_FALLBACK = {"GS10": "^TNX", "TB3MS": "^IRX", "DEXJPUS": "JPY=X", "VIXCLS": "^VIX"}
+
 # ---- 暴落の定義 ----
 BEAR_THRESHOLD = -0.20    # 高値から-20%（長期下落型）
 SHOCK_THRESHOLD = -0.10   # 21営業日で-10%（急落型）

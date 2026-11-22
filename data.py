@@ -40,26 +40,74 @@ def _cached(name: str, loader, max_age_h: float = 20.0) -> pd.Series:
     return s
 
 
+_FRED_DOWN = {"n": 0}   # fredgraph.csv が連続で失敗したら以後は試さない（待ち時間の節約）
+
+
+def _fred_csv(series_id: str) -> pd.Series:
+    raw = _http_get(f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}", timeout=40, retries=0)
+    df = pd.read_csv(io.BytesIO(raw))
+    s = pd.to_numeric(df.iloc[:, 1], errors="coerce")
+    s.index = pd.to_datetime(df.iloc[:, 0])
+    s.name = series_id
+    return s.dropna()
+
+
+def _fred_api(series_id: str) -> pd.Series:
+    import os
+    key = os.environ.get("FRED_API_KEY")
+    if not key:
+        raise RuntimeError("FRED_API_KEYなし")
+    raw = _http_get("https://api.stlouisfed.org/fred/series/observations"
+                    f"?series_id={series_id}&api_key={key}&file_type=json", timeout=40, retries=0)
+    obs = json.loads(raw)["observations"]
+    s = pd.Series({pd.Timestamp(o["date"]): o["value"] for o in obs})
+    return pd.to_numeric(s, errors="coerce").dropna()
+
+
+def _yahoo_macro(series_id: str) -> pd.Series:
+    sym = config.YAHOO_FALLBACK[series_id]
+    s = _fetch_yahoo(sym)
+    if series_id in ("GS10", "TB3MS"):   # 利回りが10倍表記の期間があるため補正
+        s = s.where(s <= 30, s / 10)
+    return s
+
+
 def fetch_fred(series_id: str) -> pd.Series:
     def load():
-        raw = _http_get(f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}")
-        df = pd.read_csv(io.BytesIO(raw))
-        df.iloc[:, 0] = pd.to_datetime(df.iloc[:, 0])
-        s = pd.to_numeric(df.iloc[:, 1], errors="coerce")
-        s.index = df.iloc[:, 0]
-        s.name = series_id
-        return s.dropna()
+        errors = []
+        steps = []
+        if _FRED_DOWN["n"] < 2:
+            steps.append(("fredgraph", _fred_csv))
+        steps.append(("fredapi", _fred_api))
+        if series_id in config.YAHOO_FALLBACK:
+            steps.append(("yahoo代替", _yahoo_macro))
+        for name, fn in steps:
+            try:
+                s = fn(series_id)
+                if name == "fredgraph":
+                    _FRED_DOWN["n"] = 0
+                if len(s) > 12:
+                    return s
+            except Exception as e:  # noqa: BLE001
+                errors.append(f"{name}: {e}")
+                if name == "fredgraph":
+                    _FRED_DOWN["n"] += 1
+        raise RuntimeError("; ".join(errors))
     return _cached(f"fred_{series_id}", load)
 
 
 def _fetch_yahoo(symbol: str) -> pd.Series:
     sym = urllib.request.quote(symbol)
-    raw = _http_get(f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}?range=max&interval=1d")
+    now = int(time.time())
+    raw = _http_get(f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}"
+                    f"?period1=-631152000&period2={now}&interval=1d")
     res = json.loads(raw)["chart"]["result"][0]
     idx = pd.to_datetime(res["timestamp"], unit="s").normalize()
     close = res["indicators"]["quote"][0]["close"]
     s = pd.Series(close, index=idx, dtype="float64").dropna()
-    return s[~s.index.duplicated(keep="last")]
+    s = s[~s.index.duplicated(keep="last")]
+    print(f"  Yahoo {symbol}: {len(s)}行 {s.index[0]:%Y-%m-%d}〜{s.index[-1]:%Y-%m-%d}", flush=True)
+    return s
 
 
 def _fetch_stooq(symbol: str) -> pd.Series:
@@ -85,6 +133,7 @@ def fetch_prices(key: str) -> pd.Series:
             s = _cached(f"px_{key}_{name}", lambda fn=fn, arg=arg: fn(arg))
             if len(s) > 1000:
                 return s.sort_index()
+            errors.append(f"{name}: 行数不足({len(s)}行)")
         except Exception as e:  # noqa: BLE001
             errors.append(f"{name}: {e}")
     s = _manual_prices(key)

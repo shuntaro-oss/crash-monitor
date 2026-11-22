@@ -16,8 +16,17 @@ th,td{border:1px solid #ddd;padding:6px 8px;text-align:left}th{background:#f4f4f
 .p{font-size:28px;font-weight:bold}.low{color:#2a7}.mid{color:#d80}.high{color:#c22}
 .card{border:1px solid #ddd;border-radius:8px;padding:12px 16px;margin:10px 0}
 .note{color:#666;font-size:13px}.warn{background:#fff6e0;border:1px solid #eac;padding:10px;border-radius:6px;font-size:13px}
+.sum{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0}
+.box{flex:1;min-width:260px;border:2px solid #ddd;border-radius:12px;padding:16px}
+.box.green{border-color:#2a7}.box.yellow{border-color:#e9a400}.box.red{border-color:#c22}
+.sig{font-size:26px;font-weight:bold;margin:2px 0 10px}.green .sig{color:#2a7}.yellow .sig{color:#c80}.red .sig{color:#c22}
+.row{margin:8px 0;font-size:15px}.chip{display:inline-block;padding:2px 10px;border-radius:999px;color:#fff;font-weight:bold;font-size:14px}
+.c-low{background:#2a7}.c-mid{background:#e9a400}.c-high{background:#c22}
+.gauge{display:flex;height:10px;border-radius:5px;overflow:hidden;margin:4px 0 2px;position:relative}
+.gauge i{flex:1}.gauge i:nth-child(1){background:#bfe5d3}.gauge i:nth-child(2){background:#f6e3a8}.gauge i:nth-child(3){background:#f3b9b0}.gauge i:nth-child(4){background:#e08a80}
+.mark{position:absolute;top:-3px;width:4px;height:16px;background:#222;border-radius:2px}
+details{margin:14px 0}summary{cursor:pointer;font-weight:bold;padding:8px 0}
 """
-
 
 def _pct(x, d=1):
     return "-" if x is None or pd.isna(x) else f"{x*100:.{d}f}%"
@@ -130,12 +139,98 @@ def _news_section(news: dict) -> str:
     return "".join(p)
 
 
-def build_html(results: dict, news: dict, demo: bool) -> str:
+RISK_WORDS = ["平均より低め", "平均並み", "平均より高め", "平均よりかなり高め"]
+
+
+def _risk(m: dict) -> tuple[int, float]:
+    """暴落リスクの段階(0-3)。不確かな推定は割り引く（現在値と下限の幾何平均で平均と比較）。"""
+    ratio = ((m["p_now"] * max(m["p_lo"], 1e-4)) ** 0.5) / m["base_rate"] if m["base_rate"] else 1
+    lv = 0 if ratio < 0.8 else 1 if ratio < 1.25 else 2 if ratio < 2 else 3
+    return lv, ratio
+
+
+def _gauge(pos: float) -> str:
+    """pos: 0〜1。4色の帯の上に印を付ける。"""
+    return f'<div class="gauge"><i></i><i></i><i></i><i></i><span class="mark" style="left:calc({pos*100:.0f}% - 2px)"></span></div>'
+
+
+def _summary_box(key: str, r: dict) -> str:
+    name = config.MARKETS[key]["name"]
+    b = r.get("bubble")
+    levels = [_risk(m) for m in r["models"].values()]
+    risk_lv = max((l for l, _ in levels), default=None)
+    bscore = b["score"] if b else None
+    # 総合の信号
+    if (bscore is not None and bscore >= 85) or risk_lv == 3:
+        sig, cls = "警戒", "red"
+    elif (bscore is not None and bscore >= 70) or (risk_lv is not None and risk_lv >= 2):
+        sig, cls = "やや警戒", "yellow"
+    else:
+        sig, cls = "平常", "green"
+    chip = lambda lv: "c-low" if lv <= 0 else "c-mid" if lv <= 2 else "c-high"
+    out = [f'<div class="box {cls}"><b>{html.escape(name)}</b><div class="sig">{sig}</div>']
+    if b:
+        bl = {"平常": 0, "やや割高": 1, "割高": 2, "バブル警戒": 3}[b["level"]]
+        out.append(f'<div class="row">バブル度　<span class="chip {chip(bl)}">{b["level"]}</span>{_gauge(min(bscore, 99.9)/100)}</div>')
+    if risk_lv is not None:
+        out.append(f'<div class="row">暴落リスク　<span class="chip {chip(risk_lv)}">{RISK_WORDS[risk_lv]}</span>{_gauge((risk_lv + 0.5) / 4)}</div>')
+        # 主な押し上げ要因（暴落リスクを高めている指標。名前のみ）
+        top = None
+        for kind in ("bear", "shock"):
+            if kind in r["models"]:
+                top = r["models"][kind]["contrib"]
+                break
+        if top is not None:
+            ups = [config.FEATURE_LABELS.get(k, k) for k, v in top.items() if v > 0.15][:2]
+            if ups:
+                out.append(f'<div class="row note">リスクを高めている主な要因：{"、".join(html.escape(u) for u in ups)}</div>')
+    out.append("</div>")
+    return "".join(out)
+
+
+def _track_record(r_all: dict, tr: dict | None) -> str:
+    """過去の検証：リスクの段階ごとに、実際に暴落が起きた割合。"""
+    lines = ["<h2>予測はどのくらい当たるか</h2>"]
+    rows = []
+    for key, r in r_all.items():
+        for kind, label in (("shock", "急落型"), ("bear", "長期下落型")):
+            m = r["models"].get(kind)
+            if not m or m["cv"].get("preds") is None:
+                continue
+            preds, y = m["cv"]["preds"], m["cv"]["y"]
+            ratio = preds / m["base_rate"]
+            bins = pd.cut(ratio, [-1, 0.8, 1.25, 2, 99], labels=RISK_WORDS)
+            for w in RISK_WORDS:
+                sel = y[bins == w]
+                if len(sel) >= 12:
+                    rows.append(f"<tr><td>{html.escape(config.MARKETS[key]['name'])}・{label}</td><td>{w}</td>"
+                                f"<td>{sel.mean()*100:.0f}%</td><td>{len(sel)}か月分</td></tr>")
+    if rows:
+        lines.append('<p class="note">過去にさかのぼって予測し直し、「その後12か月以内に実際に暴落が起きた割合」を、リスクの段階ごとに集計したものです。'
+                     '段階が上がるほど割合が増えていれば有効ですが、差が小さい段階は当てになりません。</p>'
+                     f"<table><tr><th>対象</th><th>当時の段階</th><th>実際に暴落した割合</th><th>集計期間</th></tr>{''.join(rows)}</table>")
+    if tr:
+        if tr["n_scored"] == 0:
+            first = tr["first"]
+            when = (first + pd.DateOffset(months=config.HORIZON_MONTHS)).strftime("%Y年%m月") if first is not None else "-"
+            lines.append(f'<p class="note"><b>毎日の予測の記録</b>：{tr["n_total"]}件を記録中です。最初の答え合わせは{when}以降にできます。</p>')
+        else:
+            rr = "".join(f"<tr><td>{x['market']}・{x['kind']}</td><td>{x['n']}</td><td>{x['predicted']*100:.0f}%</td><td>{x['actual']*100:.0f}%</td></tr>" for x in tr["rows"])
+            lines.append(f"<p class='note'><b>毎日の予測の記録と答え合わせ</b></p><table><tr><th>対象</th><th>件数</th><th>予測の平均</th><th>実際の発生割合</th></tr>{rr}</table>")
+    lines.append('<p class="note">結論：細かい数字は当てになりません。「平均より高いか低いか」の目安として見てください。</p>')
+    return "".join(lines)
+
+
+def build_html(results: dict, news: dict, demo: bool, tr: dict | None = None) -> str:
     body = [f"<h1>暴落モニター　{datetime.now():%Y-%m-%d}</h1>"]
     if demo:
         body.append('<div class="warn"><b>デモデータです。</b>数値は合成データによる動作確認用で、実際の市場とは無関係です。</div>')
-    body.append('<div class="warn">確率は「過去の暴落前の指標とどれだけ似ているか」の目安です。事例が少なく、予測が当たることを保証するものではありません。投資判断は自己責任でお願いします。</div>')
+    body.append('<div class="sum">' + "".join(_summary_box(k, r) for k, r in results.items()) + "</div>")
+    body.append('<div class="warn">この表示だけで投資の判断はしないでください。暴落の「時期」は当てられません。'
+                '信号は「過去の平均と比べて、いまが危うい状態か」の目安です。</div>')
+    body.append(_track_record(results, tr))
+    body.append("<h2>詳しい内容（見たいときだけ開く）</h2>")
     for k, r in results.items():
-        body.append(_market_section(k, r))
-    body.append(_news_section(news))
-    return f"<!doctype html><html lang='ja'><head><meta charset='utf-8'><title>暴落モニター</title><style>{CSS}</style></head><body>{''.join(body)}</body></html>"
+        body.append(f"<details><summary>{html.escape(config.MARKETS[k]['name'])} の詳細</summary>{_market_section(k, r)}</details>")
+    body.append(f"<details><summary>ニュース・国政・地政学</summary>{_news_section(news)}</details>")
+    return f"<!doctype html><html lang='ja'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>暴落モニター</title><style>{CSS}</style></head><body>{''.join(body)}</body></html>"

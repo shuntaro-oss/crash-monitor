@@ -48,7 +48,8 @@ def walk_forward(X: pd.DataFrame, y: pd.Series) -> dict:
             preds[te] = _prob(sc, clf, X[te].values)
         t0 = t1
     ok = preds.notna() & y.notna()
-    res = {"n_test": int(ok.sum()), "auc": None, "brier": None, "brier_base": None}
+    res = {"n_test": int(ok.sum()), "auc": None, "brier": None, "brier_base": None,
+           "preds": preds[ok], "y": y[ok]}
     if ok.sum() > 0 and y[ok].nunique() == 2:
         res["auc"] = float(roc_auc_score(y[ok], preds[ok]))
         res["brier"] = float(brier_score_loss(y[ok], preds[ok]))

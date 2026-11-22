@@ -21,6 +21,7 @@ import model
 import news as newsmod
 import bubble
 import report
+import tracker
 
 
 def main() -> int:
@@ -79,7 +80,13 @@ def main() -> int:
     config.OUT_DIR.mkdir(exist_ok=True)
     suffix = "_demo" if a.demo else ""
     out = config.OUT_DIR / f"crash_report{suffix}.html"
-    out.write_text(report.build_html(results, news, a.demo), encoding="utf-8")
+    tr = None
+    if not a.demo:   # デモの合成データは記録しない
+        try:
+            tr = tracker.score(tracker.log_predictions(results), results)
+        except Exception as e:  # noqa: BLE001
+            print(f"[警告] 予測の記録: {e}")
+    out.write_text(report.build_html(results, news, a.demo, tr), encoding="utf-8")
 
     summary = {k: {kind: {"p": m["p_now"], "lo": m["p_lo"], "hi": m["p_hi"], "base": m["base_rate"],
                           "asof": str(m["asof"].date())} for kind, m in r["models"].items()}
@@ -90,19 +97,16 @@ def main() -> int:
     summary["news_score"] = news["score"]
     (config.OUT_DIR / f"summary{suffix}.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
-    names = {"shock": "急落型(21営業日で-10%)", "bear": "長期下落型(高値から-20%)"}
     md = [f"# 暴落モニター {__import__('datetime').date.today()}", ""]
-    for k, r in summary.items():
-        if k == "news_score":
-            continue
+    for k, r in results.items():
         md.append(f"## {config.MARKETS[k]['name']}")
-        for kind, m in r.items():
-            if kind == "bubble":
-                md.append(f"- バブル度: **{m['score']:.0f}/100（{m['level']}）**")
-                continue
-            md.append(f"- {names[kind]}: **{m['p']*100:.1f}%**（幅 {m['lo']*100:.1f}〜{m['hi']*100:.1f}%、過去平均 {m['base']*100:.1f}%、基準日 {m['asof']}）")
+        if "bubble" in r:
+            md.append(f"- バブル度: **{r['bubble']['level']}**")
+        lv = [report._risk(m)[0] for m in r["models"].values()]
+        if lv:
+            md.append(f"- 暴落リスク: **{report.RISK_WORDS[max(lv)]}**")
         md.append("")
-    md.append(f"ニュース不安度: {summary['news_score'] if summary['news_score'] is None else round(summary['news_score'])} / 100")
+    md.append("※ 細かい数字は当てになりません。この表示だけで投資判断をしないでください。")
     (config.OUT_DIR / f"latest{suffix}.md").write_text("\n".join(md), encoding="utf-8")
     print(f"完了: {out}")
     for k, r in summary.items():

@@ -11,14 +11,14 @@ permissions:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install pandas numpy scikit-learn
-      - run: python main.py
+      - run: python -u main.py
       - name: 公開用に配置して保存
         run: |
           mkdir -p docs

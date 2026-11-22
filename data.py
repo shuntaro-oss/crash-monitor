@@ -13,10 +13,20 @@ import config
 UA = {"User-Agent": "Mozilla/5.0 (crash-monitor)"}
 
 
-def _http_get(url: str, timeout: int = 60) -> bytes:
-    req = urllib.request.Request(url, headers=UA)
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read()
+def _http_get(url: str, timeout: int = 25, retries: int = 1) -> bytes:
+    last = None
+    for _ in range(retries + 1):
+        t0 = time.time()
+        try:
+            req = urllib.request.Request(url, headers=UA)
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                raw = r.read()
+            print(f"  取得OK {time.time()-t0:.1f}s {url[:70]}", flush=True)
+            return raw
+        except Exception as e:  # noqa: BLE001
+            last = e
+            print(f"  取得NG {time.time()-t0:.1f}s {url[:70]} {e}", flush=True)
+    raise last
 
 
 def _cached(name: str, loader, max_age_h: float = 20.0) -> pd.Series:

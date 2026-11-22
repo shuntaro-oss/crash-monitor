@@ -44,8 +44,12 @@ def load_watchlist() -> list[dict]:
 def news_stress(enabled: bool = True) -> dict:
     out = {"themes": [], "score": None, "watchlist": load_watchlist(), "note": ""}
     zs = []
+    t_start = time.time()
     if enabled:
         for theme, query in config.NEWS_QUERIES.items():
+            if time.time() - t_start > 150:  # ニュースは補助なので2.5分で打ち切る
+                out["note"] = "時間切れのため一部のニュースを省略しました。"
+                break
             try:
                 z = _tone_z(query)
                 time.sleep(5.5)  # GDELTのレート制限対策

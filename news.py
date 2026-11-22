@@ -10,7 +10,22 @@ import numpy as np
 import pandas as pd
 
 import config
-from data import _http_get
+from data import _http_get as _raw_get
+
+
+def _http_get(url: str) -> bytes:
+    """GDELTは混雑時に429を返す。待ち時間を延ばして再試行する。"""
+    last = None
+    for wait in (0, 20, 45):
+        if wait:
+            time.sleep(wait)
+        try:
+            return _raw_get(url, timeout=30, retries=0)
+        except Exception as e:  # noqa: BLE001
+            last = e
+            if "429" not in str(e):
+                break
+    raise last
 
 GDELT = "https://api.gdeltproject.org/api/v2/doc/doc"
 
@@ -47,14 +62,14 @@ def news_stress(enabled: bool = True) -> dict:
     t_start = time.time()
     if enabled:
         for theme, query in config.NEWS_QUERIES.items():
-            if time.time() - t_start > 150:  # ニュースは補助なので2.5分で打ち切る
+            if time.time() - t_start > 300:  # ニュースは補助なので5分で打ち切る
                 out["note"] = "時間切れのため一部のニュースを省略しました。"
                 break
             try:
                 z = _tone_z(query)
-                time.sleep(5.5)  # GDELTのレート制限対策
-                heads = _headlines(query)
-                time.sleep(5.5)
+                time.sleep(6)  # GDELTのレート制限対策
+                heads = _headlines(query) if z is not None else []
+                time.sleep(6)
             except Exception as e:  # noqa: BLE001
                 out["themes"].append({"theme": theme, "z": None, "headlines": [], "error": str(e)})
                 continue

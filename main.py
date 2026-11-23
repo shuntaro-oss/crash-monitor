@@ -71,6 +71,18 @@ def main() -> int:
             except Exception as e:  # noqa: BLE001
                 res["errors"][kind] = str(e)
                 print(f"  [警告] {key}/{kind}: {e}")
+        # 短期・中期・長期（1・3・12か月）。12か月は上で採用された版を使う
+        res["horizons"] = {12: dict(res["models"])}
+        for h in config.HORIZONS:
+            if h == 12:
+                continue
+            res["horizons"][h] = {}
+            for kind in ("shock", "bear"):
+                try:
+                    res["horizons"][h][kind] = model.analyze(feat, events[events["kind"] == kind],
+                                                             config.FEATURES[key], kind, h)
+                except Exception as e:  # noqa: BLE001
+                    print(f"  [{h}か月/{kind}] 算出なし: {e}")
         try:
             res["bubble"] = bubble.compute(feat, key)
         except Exception as e:  # noqa: BLE001
@@ -102,9 +114,10 @@ def main() -> int:
         md.append(f"## {config.MARKETS[k]['name']}")
         if "bubble" in r:
             md.append(f"- バブル度: **{r['bubble']['level']}**")
-        lv = [report._risk(m)[0] for m in r["models"].values()]
-        if lv:
-            md.append(f"- 暴落リスク: **{report.RISK_WORDS[max(lv)]}**")
+        for h in config.HORIZONS:
+            lv = [report._risk(m)[0] for m in r.get("horizons", {}).get(h, {}).values()]
+            if lv:
+                md.append(f"- 暴落リスク({h}か月): **{report.RISK_WORDS[max(lv)]}**")
         md.append("")
     md.append("※ 細かい数字は当てになりません。この表示だけで投資判断をしないでください。")
     (config.OUT_DIR / f"latest{suffix}.md").write_text("\n".join(md), encoding="utf-8")

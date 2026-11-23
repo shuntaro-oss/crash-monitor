@@ -157,8 +157,10 @@ def _gauge(pos: float) -> str:
 def _summary_box(key: str, r: dict) -> str:
     name = config.MARKETS[key]["name"]
     b = r.get("bubble")
-    levels = [_risk(m) for m in r["models"].values()]
-    risk_lv = max((l for l, _ in levels), default=None)
+    hz = r.get("horizons", {12: r["models"]})
+    per = {h: max((_risk(m)[0] for m in hz.get(h, {}).values()), default=None) for h in config.HORIZONS}
+    known = [v for v in per.values() if v is not None]
+    risk_lv = max(known, default=None)
     bscore = b["score"] if b else None
     # 総合の信号
     if (bscore is not None and bscore >= 85) or risk_lv == 3:
@@ -172,18 +174,24 @@ def _summary_box(key: str, r: dict) -> str:
     if b:
         bl = {"平常": 0, "やや割高": 1, "割高": 2, "バブル警戒": 3}[b["level"]]
         out.append(f'<div class="row">バブル度　<span class="chip {chip(bl)}">{b["level"]}</span>{_gauge(min(bscore, 99.9)/100)}</div>')
-    if risk_lv is not None:
-        out.append(f'<div class="row">暴落リスク　<span class="chip {chip(risk_lv)}">{RISK_WORDS[risk_lv]}</span>{_gauge((risk_lv + 0.5) / 4)}</div>')
-        # 主な押し上げ要因（暴落リスクを高めている指標。名前のみ）
-        top = None
+    names = {1: "短期（1か月）", 3: "中期（3か月）", 12: "長期（12か月）"}
+    out.append('<div class="row"><b>暴落リスク</b></div>')
+    for h in config.HORIZONS:
+        lv = per[h]
+        txt = '<span class="note">算出できず</span>' if lv is None else f'<span class="chip {chip(lv)}">{RISK_WORDS[lv]}</span>'
+        out.append(f'<div class="row">{names[h]}　{txt}</div>')
+    top = None
+    for h in (12, 3):
         for kind in ("bear", "shock"):
-            if kind in r["models"]:
-                top = r["models"][kind]["contrib"]
+            if kind in hz.get(h, {}):
+                top = hz[h][kind]["contrib"]
                 break
         if top is not None:
-            ups = [config.FEATURE_LABELS.get(k, k) for k, v in top.items() if v > 0.15][:2]
-            if ups:
-                out.append(f'<div class="row note">リスクを高めている主な要因：{"、".join(html.escape(u) for u in ups)}</div>')
+            break
+    if top is not None:
+        ups = [config.FEATURE_LABELS.get(k, k) for k, v in top.items() if v > 0.15][:2]
+        if ups:
+            out.append(f'<div class="row note">リスクを高めている主な要因：{"、".join(html.escape(u) for u in ups)}</div>')
     out.append("</div>")
     return "".join(out)
 
@@ -193,20 +201,20 @@ def _track_record(r_all: dict, tr: dict | None) -> str:
     lines = ["<h2>予測はどのくらい当たるか</h2>"]
     rows = []
     for key, r in r_all.items():
-        for kind, label in (("shock", "急落型"), ("bear", "長期下落型")):
-            m = r["models"].get(kind)
-            if not m or m["cv"].get("preds") is None:
-                continue
-            preds, y = m["cv"]["preds"], m["cv"]["y"]
-            ratio = preds / m["base_rate"]
-            bins = pd.cut(ratio, [-1, 0.8, 1.25, 2, 99], labels=RISK_WORDS)
-            for w in RISK_WORDS:
-                sel = y[bins == w]
-                if len(sel) >= 12:
-                    rows.append(f"<tr><td>{html.escape(config.MARKETS[key]['name'])}・{label}</td><td>{w}</td>"
-                                f"<td>{sel.mean()*100:.0f}%</td><td>{len(sel)}か月分</td></tr>")
+        for h in config.HORIZONS:
+            for kind, label in (("shock", "急落型"), ("bear", "長期下落型")):
+                m = r.get("horizons", {}).get(h, {}).get(kind)
+                if not m or m["cv"].get("preds") is None:
+                    continue
+                preds, y = m["cv"]["preds"], m["cv"]["y"]
+                bins = pd.cut(preds / m["base_rate"], [-1, 0.8, 1.25, 2, 99], labels=RISK_WORDS)
+                for w in RISK_WORDS:
+                    sel = y[bins == w]
+                    if len(sel) >= 12:
+                        rows.append(f"<tr><td>{html.escape(config.MARKETS[key]['name'])}・{label}・{h}か月</td><td>{w}</td>"
+                                    f"<td>{sel.mean()*100:.0f}%</td><td>{len(sel)}か月分</td></tr>")
     if rows:
-        lines.append('<p class="note">過去にさかのぼって予測し直し、「その後12か月以内に実際に暴落が起きた割合」を、リスクの段階ごとに集計したものです。'
+        lines.append('<p class="note">過去にさかのぼって予測し直し、「その後の各期間内に実際に暴落が起きた割合」を、リスクの段階ごとに集計したものです。'
                      '段階が上がるほど割合が増えていれば有効ですが、差が小さい段階は当てになりません。</p>'
                      f"<table><tr><th>対象</th><th>当時の段階</th><th>実際に暴落した割合</th><th>集計期間</th></tr>{''.join(rows)}</table>")
     if tr:
@@ -215,7 +223,7 @@ def _track_record(r_all: dict, tr: dict | None) -> str:
             when = (first + pd.DateOffset(months=config.HORIZON_MONTHS)).strftime("%Y年%m月") if first is not None else "-"
             lines.append(f'<p class="note"><b>毎日の予測の記録</b>：{tr["n_total"]}件を記録中です。最初の答え合わせは{when}以降にできます。</p>')
         else:
-            rr = "".join(f"<tr><td>{x['market']}・{x['kind']}</td><td>{x['n']}</td><td>{x['predicted']*100:.0f}%</td><td>{x['actual']*100:.0f}%</td></tr>" for x in tr["rows"])
+            rr = "".join(f"<tr><td>{x['market']}・{x['kind']}・{x['horizon']}か月</td><td>{x['n']}</td><td>{x['predicted']*100:.0f}%</td><td>{x['actual']*100:.0f}%</td></tr>" for x in tr["rows"])
             lines.append(f"<p class='note'><b>毎日の予測の記録と答え合わせ</b></p><table><tr><th>対象</th><th>件数</th><th>予測の平均</th><th>実際の発生割合</th></tr>{rr}</table>")
     lines.append('<p class="note">結論：細かい数字は当てになりません。「平均より高いか低いか」の目安として見てください。</p>')
     return "".join(lines)

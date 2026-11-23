@@ -41,7 +41,8 @@ SHOCK_WINDOW = 21
 SHOCK_MERGE_DAYS = 63     # この日数以内の急落は同じ事象とみなす
 
 # ---- モデル ----
-HORIZON_MONTHS = 12       # 「今後12か月以内に発生する確率」を推定
+HORIZON_MONTHS = 12       # 詳細表示・ダリオ比較の基準期間
+HORIZONS = [1, 3, 12]     # 短期・中期・長期（月）
 LOGIT_C = 0.3             # 正則化（小さいほど強い）。事例が少ないため強めに設定
 MIN_TRAIN_YEARS = 15
 TEST_BLOCK_YEARS = 3

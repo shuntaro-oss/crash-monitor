@@ -226,8 +226,19 @@ def fetch_jgb() -> dict:
         lines = txt.splitlines()
         i = next(k for k, l in enumerate(lines) if l.startswith("基準日"))
         df = pd.read_csv(io.StringIO("\n".join(lines[i:])))
-        df.index = pd.to_datetime(df.iloc[:, 0], errors="coerce")
-        df = df[df.index.notna()]
+        raw_d = df.iloc[:, 0].astype(str).str.strip()
+
+        def conv(x):   # 和暦（S49.9.24 / R8.11.20）も西暦（1974/9/24）も受ける
+            import re
+            m = re.match(r"^([SHR])(\d+)\.(\d+)\.(\d+)$", x)
+            if m:
+                y = int(m.group(2)) + {"S": 1925, "H": 1988, "R": 2018}[m.group(1)]
+                return pd.Timestamp(y, int(m.group(3)), int(m.group(4)))
+            return pd.to_datetime(x, errors="coerce")
+        df.index = [conv(x) for x in raw_d]
+        df = df[pd.notna(df.index)]
+        if df.empty:
+            raise RuntimeError(f"国債金利CSVの日付を読めません: 例={list(raw_d[:3])} 列={list(df.columns)[:4]}")
         return df.apply(pd.to_numeric, errors="coerce")
     out = {}
     df = None
@@ -236,7 +247,10 @@ def fetch_jgb() -> dict:
             nonlocal df
             if df is None:
                 df = load_df()
-            return df[col].dropna()
+            r = df[col].dropna()
+            if len(r) < 100:
+                raise RuntimeError(f"国債金利 {col} の行数不足({len(r)})")
+            return r
         out[name] = _cached(f"mof_{name}", load)
     return out
 

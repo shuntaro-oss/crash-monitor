@@ -7,7 +7,7 @@
     python main.py --demo      # まず合成データで動作確認
     python main.py --open      # 実データで実行しレポートを開く
 
-オプション: `--markets US` / `--markets JP` / `--no-news`（約1分短縮）
+オプション: `--markets US` / `--markets JP` / `--news`（ニュースも取得。既定はオフ。GitHub上では取得制限が出やすい）
 
 ## 出力
 - `output/crash_report.html` … レポート（確率・要因・類似局面・過去の暴落と原因・ニュース）

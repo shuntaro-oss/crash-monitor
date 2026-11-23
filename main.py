@@ -3,7 +3,7 @@
 使い方:
     python main.py                 # 実データで実行（米・日、ニュースあり）
     python main.py --markets US    # 米国のみ
-    python main.py --no-news       # ニュース取得を省略（約1分短縮）
+    python main.py --news          # ニュースも取得する（既定は取得しない）
     python main.py --demo          # 合成データで動作確認
 """
 from __future__ import annotations
@@ -27,7 +27,7 @@ import tracker
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--markets", nargs="+", default=list(config.MARKETS), choices=list(config.MARKETS))
-    ap.add_argument("--no-news", action="store_true")
+    ap.add_argument("--news", action="store_true", help="ニュース(GDELT)も取得する。既定は取得しない")
     ap.add_argument("--demo", action="store_true")
     ap.add_argument("--open", action="store_true", help="完了後にレポートをブラウザで開く")
     a = ap.parse_args()
@@ -39,7 +39,7 @@ def main() -> int:
         print("データ取得中...")
         d = data.load_all(a.markets)
 
-    news = newsmod.news_stress(enabled=not (a.no_news or a.demo))
+    news = newsmod.news_stress(enabled=a.news and not a.demo)
 
     results = {}
     for key in a.markets:

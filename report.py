@@ -232,5 +232,6 @@ def build_html(results: dict, news: dict, demo: bool, tr: dict | None = None) ->
     body.append("<h2>詳しい内容（見たいときだけ開く）</h2>")
     for k, r in results.items():
         body.append(f"<details><summary>{html.escape(config.MARKETS[k]['name'])} の詳細</summary>{_market_section(k, r)}</details>")
-    body.append(f"<details><summary>ニュース・国政・地政学</summary>{_news_section(news)}</details>")
+    if news["themes"] or news["watchlist"]:   # ニュースは既定でオフ。取得したときだけ表示
+        body.append(f"<details><summary>ニュース・国政・地政学</summary>{_news_section(news)}</details>")
     return f"<!doctype html><html lang='ja'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>暴落モニター</title><style>{CSS}</style></head><body>{''.join(body)}</body></html>"

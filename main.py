@@ -50,6 +50,9 @@ def main() -> int:
             __import__("pandas").concat([ev.find_bear_episodes(px), ev.find_shock_episodes(px)],
                                         ignore_index=True), key)
         feat = features.build_features(px, d["fred"], d.get("extra", {}).get(key))
+        for n, x in (d.get("extra", {}).get(key) or {}).items():
+            print(f"  追加データ {key}/{n}: {len(x)}行 {x.index[0]:%Y-%m}〜{x.index[-1]:%Y-%m-%d}", flush=True)
+        print("  特徴量の有効月数:", {c: int(feat[c].notna().sum()) for c in feat.columns if c in ("cape", "per", "jp10_chg12", "jp_curve")}, flush=True)
         res = {"events": events, "models": {}, "errors": {}, "news_score": news["score"]}
         for kind in ("shock", "bear"):
             sub = events[events["kind"] == kind]

@@ -64,7 +64,7 @@ def build_features(px: pd.Series, fred: dict, extra: dict | None = None) -> pd.D
     ex = extra or {}
 
     def xm(name):
-        return _monthly(ex[name]).reindex(f.index).ffill() if name in ex else None
+        return ex[name].sort_index().reindex(f.index, method="ffill") if name in ex else None
 
     cape = xm("cape")
     if cape is not None:

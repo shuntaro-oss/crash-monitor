@@ -3,7 +3,12 @@ name: crash-monitor
 on:
   schedule:
     - cron: "0 22 * * 0-4"   # UTC 22:00 = 日本時間 月〜金 朝7:00
-  workflow_dispatch: {}        # 手動実行ボタン
+  workflow_dispatch:           # 手動実行ボタン
+    inputs:
+      test_notify:
+        description: "通知テストだけ送る（trueで送信）"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -18,9 +23,15 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install pandas numpy scikit-learn
+      - name: 通知テスト
+        if: ${{ inputs.test_notify }}
+        run: python alert.py --test
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
       - run: python -u main.py
         env:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
       - name: 公開用に配置して保存
         run: |
           mkdir -p docs

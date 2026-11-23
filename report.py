@@ -154,21 +154,26 @@ def _gauge(pos: float) -> str:
     return f'<div class="gauge"><i></i><i></i><i></i><i></i><span class="mark" style="left:calc({pos*100:.0f}% - 2px)"></span></div>'
 
 
+def signal(r: dict) -> tuple[str, str]:
+    """総合の信号。警戒=バブル度85以上、または3つの期間のうち2つ以上が「かなり高め」。"""
+    hz = r.get("horizons", {12: r["models"]})
+    per = [max((_risk(m)[0] for m in hz.get(h, {}).values()), default=None) for h in config.HORIZONS]
+    known = [v for v in per if v is not None]
+    bscore = r["bubble"]["score"] if "bubble" in r else None
+    if (bscore is not None and bscore >= 85) or sum(v == 3 for v in known) >= 2:
+        return "警戒", "red"
+    if (bscore is not None and bscore >= 70) or any(v >= 2 for v in known):
+        return "やや警戒", "yellow"
+    return "平常", "green"
+
+
 def _summary_box(key: str, r: dict) -> str:
     name = config.MARKETS[key]["name"]
     b = r.get("bubble")
     hz = r.get("horizons", {12: r["models"]})
     per = {h: max((_risk(m)[0] for m in hz.get(h, {}).values()), default=None) for h in config.HORIZONS}
-    known = [v for v in per.values() if v is not None]
-    risk_lv = max(known, default=None)
     bscore = b["score"] if b else None
-    # 総合の信号
-    if (bscore is not None and bscore >= 85) or risk_lv == 3:
-        sig, cls = "警戒", "red"
-    elif (bscore is not None and bscore >= 70) or (risk_lv is not None and risk_lv >= 2):
-        sig, cls = "やや警戒", "yellow"
-    else:
-        sig, cls = "平常", "green"
+    sig, cls = signal(r)
     chip = lambda lv: "c-low" if lv <= 0 else "c-mid" if lv <= 2 else "c-high"
     out = [f'<div class="box {cls}"><b>{html.escape(name)}</b><div class="sig">{sig}</div>']
     if b:

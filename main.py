@@ -19,6 +19,7 @@ import events as ev
 import features
 import model
 import news as newsmod
+import alert
 import bubble
 import report
 import tracker
@@ -99,6 +100,8 @@ def main() -> int:
         except Exception as e:  # noqa: BLE001
             print(f"[警告] 予測の記録: {e}")
     out.write_text(report.build_html(results, news, a.demo, tr), encoding="utf-8")
+    if not a.demo:
+        alert.check_and_notify(results, report.signal)
 
     summary = {k: {kind: {"p": m["p_now"], "lo": m["p_lo"], "hi": m["p_hi"], "base": m["base_rate"],
                           "asof": str(m["asof"].date())} for kind, m in r["models"].items()}

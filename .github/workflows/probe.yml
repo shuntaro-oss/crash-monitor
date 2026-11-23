@@ -10,6 +10,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - run: pip install pandas xlrd openpyxl lxml
       - run: python -u probe.py
         env:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}

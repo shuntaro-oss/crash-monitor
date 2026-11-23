@@ -158,4 +158,99 @@ def load_all(markets: list[str]) -> dict:
         except Exception as e:  # noqa: BLE001
             print(f"[警告] FRED {sid} を取得できません: {e}")
     px = {k: fetch_prices(k) for k in markets}
-    return {"px": px, "fred": fred}
+    return {"px": px, "fred": fred, "extra": load_extra(markets)}
+
+
+# ---------------- 追加データ（CAPE・日本PER・日本国債利回り） ----------------
+def fetch_cape() -> pd.Series:
+    """シラーPER（CAPE）。multpl.com の月次表。"""
+    def load():
+        raw = _http_get("https://www.multpl.com/shiller-pe/table/by-month", timeout=40, retries=1)
+        t = pd.read_html(io.StringIO(raw.decode("utf-8", "replace")))[0]
+        d = pd.to_datetime(t.iloc[:, 0], errors="coerce")
+        v = pd.to_numeric(t.iloc[:, 1].astype(str).str.extract(r"([\d.]+)")[0], errors="coerce")
+        s = pd.Series(v.values, index=d).dropna()
+        s = s[~s.index.isna()].sort_index()
+        if len(s) < 500:
+            raise RuntimeError(f"CAPEの行数不足({len(s)})")
+        return s
+    return _cached("cape", load)
+
+
+def _nikkei_per_month(year: int, month: int):
+    url = f"https://indexes.nikkei.co.jp/nkave/statistics/dataload?list=per&year={year}&month={month}"
+    raw = _http_get(url, timeout=30, retries=1)
+    t = pd.read_html(io.StringIO(raw.decode("utf-8", "replace")))[0]
+    d = pd.to_datetime(t.iloc[:, 0].astype(str).str.replace(".", "-", regex=False), errors="coerce")
+    v = pd.to_numeric(t.iloc[:, 1], errors="coerce")   # 加重平均PER
+    s = pd.Series(v.values, index=d).dropna()
+    return s
+
+
+def fetch_jp_per() -> pd.Series:
+    """日経平均PER（加重平均、2004年〜）。取得済みの月は data/jp_per.csv に保存し、不足分だけ取りに行く。"""
+    from concurrent.futures import ThreadPoolExecutor
+    path = config.DATA_DIR / "jp_per.csv"
+    hist = pd.Series(dtype="float64")
+    if path.exists():
+        hist = pd.read_csv(path, index_col=0, parse_dates=True).iloc[:, 0]
+    today = pd.Timestamp.today()
+    months = pd.period_range("2004-11", today.to_period("M"), freq="M")
+    have = set(hist.index.to_period("M")) if len(hist) else set()
+    todo = [m for m in months if m not in have or m >= today.to_period("M") - 1]   # 直近2か月は毎回更新
+    print(f"  日経PER: 取得対象 {len(todo)}か月", flush=True)
+
+    def one(m):
+        try:
+            return _nikkei_per_month(m.year, m.month)
+        except Exception as e:  # noqa: BLE001
+            print(f"  日経PER {m} 失敗: {e}", flush=True)
+            return None
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        parts = [x for x in ex.map(one, todo) if x is not None and len(x)]
+    if parts:
+        hist = pd.concat([hist] + parts)
+        hist = hist[~hist.index.duplicated(keep="last")].sort_index()
+        config.DATA_DIR.mkdir(exist_ok=True)
+        hist.to_csv(path, header=["value"])
+    if len(hist) < 100:
+        raise RuntimeError(f"日経PERの行数不足({len(hist)})")
+    return hist
+
+
+def fetch_jgb() -> dict:
+    """財務省 国債金利（日次）。1年・10年を返す。"""
+    def load_df():
+        raw = _http_get("https://www.mof.go.jp/jgbs/reference/interest_rate/data/jgbcm_all.csv", timeout=40, retries=1)
+        txt = raw.decode("cp932", "replace")
+        lines = txt.splitlines()
+        i = next(k for k, l in enumerate(lines) if l.startswith("基準日"))
+        df = pd.read_csv(io.StringIO("\n".join(lines[i:])))
+        df.index = pd.to_datetime(df.iloc[:, 0], errors="coerce")
+        df = df[df.index.notna()]
+        return df.apply(pd.to_numeric, errors="coerce")
+    out = {}
+    df = None
+    for name, col in (("jp1", "1年"), ("jp10", "10年")):
+        def load(col=col):
+            nonlocal df
+            if df is None:
+                df = load_df()
+            return df[col].dropna()
+        out[name] = _cached(f"mof_{name}", load)
+    return out
+
+
+def load_extra(markets: list[str]) -> dict:
+    """{'US': {'cape': S}, 'JP': {'per': S, 'jp1': S, 'jp10': S}}。取得できないものは黙って省く。"""
+    extra = {}
+    jobs = {"US": [("cape", fetch_cape)], "JP": [("per", fetch_jp_per), ("jgb", fetch_jgb)]}
+    for k in markets:
+        extra[k] = {}
+        for name, fn in jobs.get(k, []):
+            try:
+                r = fn()
+                extra[k].update(r if isinstance(r, dict) else {name: r})
+            except Exception as e:  # noqa: BLE001
+                print(f"[警告] 追加データ {k}/{name} を取得できません: {e}", flush=True)
+    return extra

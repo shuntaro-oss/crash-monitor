@@ -61,13 +61,16 @@ BUBBLE_PEAKS = {
 }
 
 # ダリオ型の追加特徴量。通常版と検証成績を比べ、改善したときだけ採用する（米国のみ）
-DALIO_EXTRA = {"US": ["gov_debt", "gov_debt_chg5", "priv_debt_chg5", "real_ff"]}
+DALIO_EXTRA = {"US": ["gov_debt", "gov_debt_chg5", "priv_debt_chg5", "real_ff"],
+               "JP": ["jp10_chg12", "jp_curve"]}   # 日本は国債利回り（財務省）
 
 FEATURE_LABELS = {
     "gov_debt": "政府債務/GDP",
     "gov_debt_chg5": "政府債務/GDPの5年変化",
     "priv_debt_chg5": "民間債務/GDPの5年変化（信用の膨張）",
     "real_ff": "実質政策金利（FF金利−インフレ率）",
+    "jp10_chg12": "日本10年国債利回りの12か月変化",
+    "jp_curve": "日本イールドカーブ（10年−1年）",
     "dd": "高値からの下落率",
     "ret12": "直近12か月の騰落率",
     "vol3": "直近3か月の変動率",

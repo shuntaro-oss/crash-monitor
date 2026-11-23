@@ -11,6 +11,8 @@ LABELS = {
     "val": "10年平均に対する割高度",
     "ret36": "直近3年の年率上昇率",
     "trend": "長期トレンドからの乖離",
+    "cape": "シラーPER（CAPE）",
+    "per": "日経平均PER（加重平均）",
     "equity_gdp": "株式時価総額/GDP（バフェット指標）",
     "priv_debt_chg5": "民間債務/GDPの5年変化（信用の膨張）",
 }
@@ -36,6 +38,9 @@ def compute(feat: pd.DataFrame, key: str) -> dict:
     ok = lp.notna().values
     k, b = np.polyfit(t[ok], lp.values[ok], 1)
     comp["trend"] = lp - (k * t + b)
+    for c in ("cape", "per"):   # 市場に応じて存在する列だけ（CAPEは米、PERは日本）
+        if c in feat.columns and feat[c].notna().sum() > 60:
+            comp[c] = feat[c]
     if key == "US":   # 米国のみ（FREDのAPIキーがあるときだけ列が存在）
         for c in ("equity_gdp", "priv_debt_chg5"):
             if c in feat.columns and feat[c].notna().sum() > 240:

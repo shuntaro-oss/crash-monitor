@@ -9,7 +9,7 @@ def _monthly(s: pd.Series) -> pd.Series:
     return s.resample("ME").last()
 
 
-def build_features(px: pd.Series, fred: dict) -> pd.DataFrame:
+def build_features(px: pd.Series, fred: dict, extra: dict | None = None) -> pd.DataFrame:
     px = px.dropna()
     m = _monthly(px)
     hi12 = px.rolling(252, min_periods=120).max().resample("ME").last()
@@ -60,4 +60,21 @@ def build_features(px: pd.Series, fred: dict) -> pd.DataFrame:
         f["equity_gdp"] = eq / 1000 / gdp * 100   # 株式時価総額/GDP(%)
     if ff is not None and "cpi_yoy" in f:
         f["real_ff"] = ff - f["cpi_yoy"]
+    # ---- 追加データ（CAPE・日本PER・日本国債利回り）。ある場合だけ列を足す ----
+    ex = extra or {}
+
+    def xm(name):
+        return _monthly(ex[name]).reindex(f.index).ffill() if name in ex else None
+
+    cape = xm("cape")
+    if cape is not None:
+        f["cape"] = cape
+    per = xm("per")
+    if per is not None:
+        f["per"] = per
+    j10, j1 = xm("jp10"), xm("jp1")
+    if j10 is not None:
+        f["jp10_chg12"] = j10 - j10.shift(12)
+        if j1 is not None:
+            f["jp_curve"] = j10 - j1
     return f

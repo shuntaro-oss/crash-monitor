@@ -179,6 +179,15 @@ def _summary_box(key: str, r: dict) -> str:
     if b:
         bl = {"平常": 0, "やや割高": 1, "割高": 2, "バブル警戒": 3}[b["level"]]
         out.append(f'<div class="row">バブル度　<span class="chip {chip(bl)}">{b["level"]}</span>{_gauge(min(bscore, 99.9)/100)}</div>')
+    cp = r.get("cape")
+    if cp:
+        y = 100 / cp["value"]   # 益利回り≒長期の実質リターンの目安
+        w, k = (("高い", 0) if y >= 6.5 else ("並み", 1) if y >= 4.5 else ("低い", 2) if y >= 3 else ("かなり低い", 3))
+        out.append(f'<div class="row">10年先の期待リターン　<span class="chip {"c-low" if k == 0 else "c-mid" if k == 1 else "c-high"}">{w}</span></div>')
+        out.append(f'<div class="row note">シラーPER {cp["value"]:.0f}倍（過去の上位{100 - cp["pct"]:.0f}%の割高さ）。割高なほど、その後10年の平均リターンは低くなる傾向があります</div>')
+    pj = r.get("feat_now", {}).get("per")
+    if pj:
+        out.append(f'<div class="row note">日経平均PER {pj:.1f}倍（2004年以降の平均と比べた位置はバブル度に反映）</div>')
     names = {1: "短期（1か月）", 3: "中期（3か月）", 12: "長期（12か月）"}
     out.append('<div class="row"><b>暴落リスク</b></div>')
     for h in config.HORIZONS:

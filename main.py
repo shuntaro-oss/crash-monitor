@@ -49,7 +49,7 @@ def main() -> int:
         events = ev.attach_causes(
             __import__("pandas").concat([ev.find_bear_episodes(px), ev.find_shock_episodes(px)],
                                         ignore_index=True), key)
-        feat = features.build_features(px, d["fred"])
+        feat = features.build_features(px, d["fred"], d.get("extra", {}).get(key))
         res = {"events": events, "models": {}, "errors": {}, "news_score": news["score"]}
         for kind in ("shock", "bear"):
             sub = events[events["kind"] == kind]
@@ -66,9 +66,9 @@ def main() -> int:
                                                               "p_base": base["p_now"], "p_ext": ext["p_now"]}
                         if adopt:
                             res["models"][kind] = ext
-                        print(f"  {key}/{kind}: ダリオ版 AUC {e['auc']} Brier {e['brier']} / 通常版 AUC {b['auc']} Brier {b['brier']} -> {'採用' if adopt else '不採用'}")
+                        print(f"  {key}/{kind}: 追加指標版 AUC {e['auc']} Brier {e['brier']} / 通常版 AUC {b['auc']} Brier {b['brier']} -> {'採用' if adopt else '不採用'}")
                     except Exception as ex:  # noqa: BLE001
-                        print(f"  [ダリオ版スキップ] {key}/{kind}: {ex}")
+                        print(f"  [追加指標版スキップ] {key}/{kind}: {ex}")
             except Exception as e:  # noqa: BLE001
                 res["errors"][kind] = str(e)
                 print(f"  [警告] {key}/{kind}: {e}")
@@ -89,6 +89,10 @@ def main() -> int:
                 c = m["cv"]
                 print(f"  検証 {key}/{kind}/{h}か月: AUC={c['auc'] if c['auc'] is None else round(c['auc'], 3)} "
                       f"検証月数={c['n_test']} 発生率={m['base_rate']:.3f}")
+        res["feat_now"] = {c: float(feat[c].dropna().iloc[-1]) for c in ("cape", "per") if c in feat and feat[c].notna().any()}
+        if "cape" in feat and feat["cape"].notna().any():
+            c = feat["cape"].dropna()
+            res["cape"] = {"value": float(c.iloc[-1]), "pct": float((c < c.iloc[-1]).mean() * 100)}
         try:
             res["bubble"] = bubble.compute(feat, key)
         except Exception as e:  # noqa: BLE001

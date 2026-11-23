@@ -84,6 +84,11 @@ def main() -> int:
                                                              config.FEATURES[key], kind, h)
                 except Exception as e:  # noqa: BLE001
                     print(f"  [{h}か月/{kind}] 算出なし: {e}")
+        for h, ms in res["horizons"].items():
+            for kind, m in ms.items():
+                c = m["cv"]
+                print(f"  検証 {key}/{kind}/{h}か月: AUC={c['auc'] if c['auc'] is None else round(c['auc'], 3)} "
+                      f"検証月数={c['n_test']} 発生率={m['base_rate']:.3f}")
         try:
             res["bubble"] = bubble.compute(feat, key)
         except Exception as e:  # noqa: BLE001
